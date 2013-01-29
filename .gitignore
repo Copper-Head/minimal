@@ -1,0 +1,9 @@
+# ignore compiled files
+*.pyc
+
+# build directory
+build/
+
+# editor temporary files
+*.*.sw[op]
+.idea
