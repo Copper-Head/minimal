@@ -47,9 +47,9 @@ def is_movable(phrase):
     ''' check if the move operation need be applied to a phrase'''
     return ('+' in phrase['head'].features[-1])
 
-def is_selector(node):
+def is_selector(node, mark):
     ''' check if phrase is a selector '''
-    return ('=' in node['head'].features[-1])
+    return (mark in node['head'].features[-1])
 
 def is_licensee(node, l):
     ''' check if a node contains licensee feature that matches a given licensor '''
@@ -59,10 +59,10 @@ def is_licensee(node, l):
     else:
         return None
 
-def features_match(head, tail):
+def features_match(head, tail, mark):
     ''' checks if feature of a selectee matches that of a selector '''
-    if not is_selector(tail):   # first verify that selectee is not itself a selector
-        selector = head['head'].features[-1].replace('=', '')
+    if not is_selector(tail, mark):   # first verify that selectee is not itself a selector
+        selector = head['head'].features[-1].replace(mark, '')
         selectee = tail['head'].features[-1]
         return (selector == selectee)
     return False
@@ -76,9 +76,14 @@ def concat(node1, node2):
 def cut_features(phrase):
     return Node(phrase['head'].index, phrase['head'].features[:-1])
 
-#def try_merge(trigger, chart):
-    #''' loops over the chart trying to merge its members with a given trigger'''
-    #return [merge(trigger, node) for node in chart]
+def establish_roles(trigger, phrase, mark):
+    if is_selector(phrase, mark) and features_match(phrase, trigger, mark):
+        return (phrase, trigger) 
+    elif is_selector(trigger, mark) and features_match(trigger, phrase, mark):
+        return (trigger, phrase)
+    else:
+        # print('No merge possible, culprit:', phrase['head'])
+        return None
 
 def print_list(iterable):
     '''custom print for lists'''
@@ -114,13 +119,11 @@ def move(phrase):
         return None
 
 def merge(trigger, phrase):
-    if is_selector(phrase) and features_match(phrase, trigger):
-        head, tail = phrase, trigger
-    elif is_selector(trigger) and features_match(trigger, phrase):
-        head, tail = trigger, phrase
-    else:
-        # print('No merge possible, culprit:', phrase['head'])
+    roles = establish_roles(trigger, phrase, '=')
+    if not roles:
         return None
+    else:
+        head, tail = roles[0], roles[1]
    
     print('Selector -- Selectee:\n', head['head'], ' -- ', tail['head'])
     newTail = cut_features(tail) # type is Node, not phrase
@@ -143,7 +146,32 @@ def merge(trigger, phrase):
     return make_phrase(newHead, newTailS)
 
 def adjoin(trigger, phrase):
-    pass
+    '''given a trigger and a phrase returns either None if adjoin is impossible
+    or the result of adjoining one of the args with the other'''
+    roles = establish_roles(trigger, phrase, '%')
+    if not roles:
+        return None
+    else:
+        head, adjunct = roles[1], roles[0]
+    print('Head -- Adjunct:\n', head['head'], ' -- ', adjunct['head'])
+    newAdjunct = cut_features(adjunct)
+    newHead = head['head']
+    if len(newAdjunct.features) > 0:
+        print('Still some features left on adjunct, we cannot concatenate it with head')
+        newTailS = head['tail'] + [newAdjunct] + adjunct['tail']
+    else:
+        print('No more features left on adjunct, concatenating with head')
+        newTailS = head['tail'] + adjunct['tail']
+        newHead = Node(concat(newAdjunct, newHead), newHead.features)
+    return make_phrase(newHead, newTailS)
+# testing adjoin
+#x = make_phrase(Node((1,2), ['v','d']))
+#y = make_phrase(Node((0,1), ['-f','%d']))
+#z = make_phrase(Node((0,1), ['%d']))
+#print(adjoin(x, y))
+#print(adjoin(y, x))
+#print(adjoin(z, x))
+
 
 def recognize(agenda, goals, chart=[], counter=1):
     '''given a set of axioms represented by agenda and a set of goals
