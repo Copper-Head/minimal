@@ -1,9 +1,27 @@
 Umass Amherst
+=============
 Spring 2013
 
 Independent Study by Ilia Kurenkov
 
 Advisor: Brian Dillon
 
-For the latest report on work done, please see:
+Current Usage
+=============
+The file 'recognizer.py' can be run as is (it will run on an example sentence) or in interactive
+mode. Please note that in its current state the Lexicon is very small and does not support practically
+any variation in input. This essentially means that for now it is best to run just the demo version
+of the file.
+
+All the remaining files at this stage are purely demos and cannot be run in interactive mode
+
+The file 'mg1.py' is my first take on coding minimalism and runs through one of Stabler's examples
+from his 1995 paper.
+
+'chartmg.py' and 'chartmg2.py' are chart parser implementations of an MG. Run these if you like to
+see looots of print statements.
+
+I am also writing a paper for this project, comparing Stabler's MG parser to the Minimalist Parser
+posited by Amy Weinberg.
+For the latest version please see:
 https://www.dropbox.com/s/hhz6m0duqxui5r1/kurenkov_2013_minimalism.pdf
