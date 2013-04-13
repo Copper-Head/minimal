@@ -12,6 +12,8 @@ from collections import namedtuple
 Tree = namedtuple('Tree', ['span', 'head', 'tail'])
 features = namedtuple('features', ['checked', 'unchecked'])
 
+SENT = 'mary eats meat' # sentence for the demo 
+
 ###============ I/O Helper Functions ================
 
 def parse_axiom_file(fileName):
@@ -74,7 +76,7 @@ def find_lex_axioms(sent, d):
 
 #============================ Boolean Functions ===============================
 
-def is_selector(feat):
+def is_licensor(feat):
     return feat[0] == '+'
 
 def is_selected(feat):
@@ -82,6 +84,13 @@ def is_selected(feat):
 
 def is_selector(feat):
     return feat[0] == '='
+
+def is_head(phrase):
+    feature = phrase.unchecked[0]
+    return is_selector(feature) or is_licensor(feature)
+
+def is_end_category(phrase):
+    return phrase.unchecked[0] == 'c' and len(phrase.unchecked) == 1
 
 #============================ Helper Functions ================================
 
@@ -110,6 +119,13 @@ def abort_due_to(word):
     return 'The lexicon does not have the word "{0}" in it, please enter \
 something the lexicon will recognize or load a new lexicon'
 
+def inherit_features(daughter):
+    active = daughter.unchecked[0]
+    checked = daughter.checked + [active]
+    unchecked = daughter.unchecked[1:]
+    return features(checked, unchecked)
+
+
 #============================ Core Functions ==================================
 
 def unmerge(feat, feat_type):
@@ -124,24 +140,33 @@ def unmove(feat):
 
 def scan(inpt, to_recognize):
     for priority in sorted(to_recognize, reverse=True):
+        print('Top priority item on stack:', to_recognize[priority])
+        print('Compared to the active item:', inpt)
         if inpt.unchecked[0] == to_recognize[priority][1].unchecked[0]:
-            recognized = to_recognize[priority][0]
+            print('The item on the stack was recognized.')
+            print('It will now serve as the active item...')
+            if is_head(inpt):
+                recognized = up(inpt)[0]
+            else:
+                recognized = to_recognize[priority][0]
+            print('... after we remove it from the stack')
             del to_recognize[priority]
+            print('Now we check the stack again, this time with our new item\n')
             return scan(recognized, to_recognize)
+    print('No items on the stack matched this item or the stack was empty.')
     return (inpt, to_recognize)
 
-def up(daughter):
-    active = daughter.unchecked[0]
-    checked = daughter.checked + [active]
-    unchecked = daughter.unchecked[1:]
-    return (features(checked, unchecked), active)
+def up(daughter, inherit=False):
+    if inherit or is_head(daughter):
+        return (inherit_features(daughter), daughter.unchecked[0])
+    return (features([None], [None]), daughter.unchecked[0]) 
 
 def down(feat):
     if is_selector(feat):
         return unmerge(feat, 'selector')
     elif is_selected(feat):
         return unmerge(feat, 'selectee')
-    elif is_mover(feat):
+    elif is_licensor(feat):
         return unmove(feat)
     else:
         raise Exception('there was a problem with this feature: {0}'.format(feat))
@@ -150,39 +175,51 @@ def parse(sent, lexicon):
     priority_counter = 0
     to_recognize = {}
     for word in sent:
-        print('contents of the stack:')
+        print('{}\nNew parsing cycle.'.format('#'*50))
+        print('Contents of the stack:')
         print_iter(to_recognize)
-        print('reading input:', word)
+        print('Reading input: "{}"'.format(word))
         if word not in lexicon:
             print('not found')
             abort_due_to(word)
         inpt = features([], lexicon[word])
-        print('cound lex entry:', inpt)
+        print('Found lexical entry:', inpt)
         #print scan(inpt, to_recognize)
+        print('Scanning stack for matches with this active item')
         (match, to_recognize) = scan(inpt, to_recognize)
         current = match or inpt
-        print('recognized this phrase:', current)
-        #print match == None
-        (project_derive, feature) = up(current)
-        expand_predict = down(feature)
-        if project_derive and expand_predict:
-            #print ('able to expand')
-            print('semi-recognized mother:', project_derive)
-            print('unrecognized sister:', expand_predict)
-            to_recognize[priority_counter] = (project_derive, expand_predict)
-            priority_counter += 1
-    print(to_recognize)
+        #print('recognized this phrase:', current)
+        #print(current.unchecked[0] == 'c' )
+        #print(len(current.unchecked) == 1)
+        if not is_end_category(current):
+            print('This is not the end yet!')
+            (project_derive, feature) = up(current)
+            expand_predict = down(feature)
+            if project_derive and expand_predict:
+                print ('Projection and prediction rules yield the following...')
+                print('Semi-recognized mother:', project_derive)
+                print('Unrecognized sister:', expand_predict)
+                print('We add these items coupled together to the stack.')
+                to_recognize[priority_counter] = (project_derive, expand_predict)
+                priority_counter += 1
+    print('It appears we have reached the end of the sentence.')
+    print('Here are the contents of the stack:')
+    print_iter(to_recognize)
     return len(to_recognize) == 0
 
 #================================= __MAIN__ ===================================
-def main():
-    print('For now this is just a demo')
+def main(demo=True):
+    print('For now this is just a demo.')
     lex = parse_axiom_file('test.lex')['lex']
     print('We have the following Lexicon:')
     print_iter(lex)
-    sent_to_parse = raw_input('Please enter some words to parse\n').split()
-    print('Parser, do you recognize this sentence?')
-    print(parse(sent_to_parse, lex))
+    if demo:
+        print('Is the sentence "mary eats meat" grammatical?')
+        print(parse(['start'] + SENT.split(), lex))
+    else:
+        sent_to_parse = raw_input('Please enter some words to parse\n').split()
+        print('Parser, do you recognize this sentence?')
+        print(parse(sent_to_parse, lex))
 
 #------------------------------------------------------------------------------
 if __name__ == '__main__':
