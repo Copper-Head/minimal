@@ -3,14 +3,26 @@
 # http://opensource.org/licenses/MIT
 
 #===================== IMPORTS --- SETUP --- GLOBAL VARS ======================
-from __future__ import print_function
-import os
-import sys
-import re
+from __future__ import print_function # for python 3.x printing 
+#import os
+#import sys
+#import re
 from collections import namedtuple
+# try to import numpy and matplotlib, if imports fail, no plots will be drawn
+try:
+    import numpy as np # needed to create Axes for plots 
+    numpy_imported = True
+except ImportError:
+    numpy_imported = False
+try:
+    import matplotlib.pyplot as plt # needed to plot stuff 
+    plotting_imported = True
+except ImportError:
+    plotting_imported = False
 
-Tree = namedtuple('Tree', ['span', 'head', 'tail'])
-features = namedtuple('features', ['checked', 'unchecked'])
+tree = namedtuple('tree', ['head', 'features', 'tree_type'])
+pair = namedtuple('pair', ['part_confirmed', 'unconfirmed'])
+#features = namedtuple('features', ['checked', 'unchecked'])
 
 SENT = 'mary eats meat' # sentence for the demo 
 
@@ -74,33 +86,62 @@ def find_lex_axioms(sent, d):
             raise Exception(sent[indx])
     return [Node(x[0], x[1]) for x in lexAxioms]
 
+def plot_stack(sent, stack_sizes):
+    '''plots size of stack change over tokens processed'''
+    # set plot title and y-axis label
+    plt.title('Stack Size over Tokens Traversed')
+    plt.ylabel('Stack Size')
+    ind = np.arange(len(sent))
+    #ind = range(len(sent))
+    width = 0.4
+    #generate plot
+    bars = plt.bar(ind, stack_sizes, width, color='g')
+    #set ticks for both axes
+    plt.xticks(ind+width/2, sent)
+    plt.yticks(range(0,max(stack_sizes)+2,1))
+    #draw the plot
+    plt.show()
+
 #============================ Boolean Functions ===============================
 
 def is_licensor(feat):
+    '''checks if feat is a licensor'''
     return feat[0] == '+'
 
 def is_selected(feat):
+    '''checks if feature is a base that is being selected'''
     return feat[0] != '+' and feat[0] != '='
 
 def is_selector(feat):
+    '''checks if feature is selector'''
     return feat[0] == '='
 
 def is_head(phrase):
-    feature = phrase.unchecked[0]
+    '''checks if phrase is a head'''
+    feature = phrase[0]
     return is_selector(feature) or is_licensor(feature)
 
+def is_movable(item):
+    return '+' in item.head[0]
+
 def is_end_category(phrase):
-    return phrase.unchecked[0] == 'c' and len(phrase.unchecked) == 1
+    '''checks if phrase is the distinguished or end category'''
+    return phrase.head[0] == 'c' and len(phrase.head) == 1
 
 #============================ Helper Functions ================================
 
+def match(item1, item2):
+    return (item1.head[0] == item2.head[0] and 
+            (item2.tree_type == 'either' 
+                or item1.tree_type == item2.tree_type))
+
 def print_iter(iterable):
-    '''custom print for lists'''
-    if type(iterable) == list:
+    '''custom print for iterables such as lists and dictionaries'''
+    if type(iterable) == list: # if we have a list 
         retrieve = lambda x: x
-    elif type(iterable) == dict:
+    elif type(iterable) == dict: # if we have a dictionary 
         retrieve = lambda x: (x, iterable[x])
-    else:
+    else: # in case it is neither 
         raise Exception('Unsupported iterable type: {0}'.format(type(iterable)))
     if len(iterable) > 0:
         for i in iterable:
@@ -108,8 +149,8 @@ def print_iter(iterable):
     else:
         print('EMPTY')
 
-def make_phrase(pos, features):
-    pass
+#def make_phrase(pos, features):
+    #pass
 
 #def update(sorted_list, recognized):
     #for member in sorted_list:
@@ -119,61 +160,97 @@ def abort_due_to(word):
     return 'The lexicon does not have the word "{0}" in it, please enter \
 something the lexicon will recognize or load a new lexicon'
 
-def inherit_features(daughter):
-    active = daughter.unchecked[0]
-    checked = daughter.checked + [active]
-    unchecked = daughter.unchecked[1:]
-    return features(checked, unchecked)
+def project_predict(feats):
+    print(feats)
+    return pair(up(feats), down(feats[0]))
 
+#def gen_recognized(daughter, mother, inherit):
+    #'''Returns mother node that inherited its features from the passed daughter
+    #node.'''
+    #if inherit:
+        #return tree(daughter.head[:1], [], simple=False)
+    #pass
+    #active = daughter.head[0]
+    ##checked = daughter.checked + [active]
+    #unchecked = daughter.head[1:]
+    #return tree(unchecked, daughter.features, simple=True)
 
 #============================ Core Functions ==================================
 
 def unmerge(feat, feat_type):
-    if feat_type == 'selector':
-        return features([], [feat.lstrip('=')])
-    elif feat_type == 'selectee':
-        return features([], ['=' + feat])
+    '''Depending on whether the feat_type is selector or selectee returns a
+    projected (yet unrecognized) node that will be then added to the stack'''
+    if feat_type == 'selectee':
+        return tree([feat.lstrip('=')], [], 'either')
+    elif feat_type == 'selector':
+        return tree(['=' + feat], [], 'complex')
 
-def unmove(feat):
+def unmove(item):
     '''return an unmoved node'''
-    pass
+    f = '-' + item.head[0].strip('+')
+    if item.features.count(f) == 1:
+        item.features.remove(f)
+        return tree(item.head[1:], item.features, 'complex')
 
 def scan(inpt, to_recognize):
-    for priority in sorted(to_recognize, reverse=True):
-        print('Top priority item on stack:', to_recognize[priority])
+    ''' Compares inpt to every member of to_recognize.
+    inpt : node that was either read in or passed by previous iterations of scan()
+    to_recognize : stack of unrecognized nodes
+    '''
+    #if is_movable(inpt):
+        #return(
+    for priority, pair in sorted(to_recognize, reverse=True):
+        print('Top priority item on stack:', pair)
         print('Compared to the active item:', inpt)
-        if inpt.unchecked[0] == to_recognize[priority][1].unchecked[0]:
+        if match(inpt, pair.unconfirmed):
             print('The item on the stack was recognized.')
             print('It will now serve as the active item...')
-            if is_head(inpt):
-                recognized = up(inpt)[0]
+            if is_head(inpt.head):
+                recognized = tree(inpt.head[1:], inpt.features, 'complex')
+                print(recognized)
             else:
-                recognized = to_recognize[priority][0]
+                recognized = pair.part_confirmed
             print('... after we remove it from the stack')
-            del to_recognize[priority]
+            if priority != 0: # keep null items on stack 
+                to_recognize.remove((priority, pair))
             print('Now we check the stack again, this time with our new item\n')
             return scan(recognized, to_recognize)
     print('No items on the stack matched this item or the stack was empty.')
     return (inpt, to_recognize)
 
-def up(daughter, inherit=False):
-    if inherit or is_head(daughter):
-        return (inherit_features(daughter), daughter.unchecked[0])
-    return (features([None], [None]), daughter.unchecked[0]) 
+def up(feats):
+    '''Project a semi-recognized mother node from daughter.
+    if inherit=True or daughter is determined to be a head, the constructed
+        mother will inherit the features of the daughter, otherwise the
+        features will be set to None and inherited from the sister node of the
+        current daughter one.
+        '''
+    if is_head(feats):
+        return tree(feats[1:], [], 'complex')
+    return tree([None], [], 'complex')
 
 def down(feat):
+    '''Determines what operation to use to construct a projected unrecognized
+    node based on the feature feat. '''
+    print(feat)
     if is_selector(feat):
-        return unmerge(feat, 'selector')
-    elif is_selected(feat):
         return unmerge(feat, 'selectee')
-    elif is_licensor(feat):
-        return unmove(feat)
+    elif is_selected(feat):
+        return unmerge(feat, 'selector')
+    #elif is_licensor(feat):
+        #return unmove(feat)
     else:
         raise Exception('there was a problem with this feature: {0}'.format(feat))
 
-def parse(sent, lexicon):
-    priority_counter = 0
-    to_recognize = {}
+def parse(sent, lexicon, null_cats):
+    priority_counter = 1
+    stack_sizes = [0]
+    #to_recognize = {0:(features(['=v'], ['c']), features([], ['v']))}
+    #stack_sizes = [len(to_recognize)]
+    #to_recognize = []
+# NEEDS WORK
+    to_recognize = [(0, project_predict(item)) for item in null_cats]
+    non_lex = len(to_recognize)
     for word in sent:
         print('{}\nNew parsing cycle.'.format('#'*50))
         print('Contents of the stack:')
@@ -182,44 +259,59 @@ def parse(sent, lexicon):
         if word not in lexicon:
             print('not found')
             abort_due_to(word)
-        inpt = features([], lexicon[word])
+        inpt = tree(lexicon[word], [], 'simple')
         print('Found lexical entry:', inpt)
         #print scan(inpt, to_recognize)
         print('Scanning stack for matches with this active item')
-        (match, to_recognize) = scan(inpt, to_recognize)
-        current = match or inpt
+        (current, to_recognize) = scan(inpt, to_recognize)
         #print('recognized this phrase:', current)
         #print(current.unchecked[0] == 'c' )
         #print(len(current.unchecked) == 1)
         if not is_end_category(current):
             print('This is not the end yet!')
-            (project_derive, feature) = up(current)
-            expand_predict = down(feature)
-            if project_derive and expand_predict:
-                print ('Projection and prediction rules yield the following...')
-                print('Semi-recognized mother:', project_derive)
-                print('Unrecognized sister:', expand_predict)
-                print('We add these items coupled together to the stack.')
-                to_recognize[priority_counter] = (project_derive, expand_predict)
-                priority_counter += 1
+            if is_movable(current):
+                current = unmove(current)
+            to_recognize.append((priority_counter, project_predict(current.head)))
+            priority_counter += 1
+            #project_derive = up(current)
+            #expand_predict = down(current.head[0])
+            #if project_derive and expand_predict:
+                #print ('Projection and prediction rules yield the following...')
+                #print('Semi-recognized mother:', project_derive)
+                #print('Unrecognized sister:', expand_predict)
+                #print('We add these items coupled together to the stack.')
+                #to_recognize[priority_counter] = pair(project_derive, expand_predict)
+        stack_sizes.append(max((len(to_recognize)-non_lex),0))
     print('It appears we have reached the end of the sentence.')
     print('Here are the contents of the stack:')
     print_iter(to_recognize)
-    return len(to_recognize) == 0
+    stack_sizes.append(max((len(to_recognize)-non_lex),0))
+    if numpy_imported and plotting_imported:
+        # plots cut off at the last token for some reason, so we add a dummy token
+        # to the sent list and a dummy value to the stack_sizes list
+        sent = [''] + sent + ['']
+        #stack_sizes.append(0)
+        plot_stack(sent, stack_sizes)
+    return len([x for x, y in to_recognize if x > 0]) == 0
 
 #================================= __MAIN__ ===================================
 def main(demo=True):
     print('For now this is just a demo.')
-    lex = parse_axiom_file('test.lex')['lex']
+    axiom_file = parse_axiom_file('test.lex')
+    lex = axiom_file['lex']
+    n_cats = axiom_file['non-lex']
     print('We have the following Lexicon:')
     print_iter(lex)
+    print('And the following non-lexical categories:')
+    print_iter(n_cats)
     if demo:
         print('Is the sentence "mary eats meat" grammatical?')
-        print(parse(['start'] + SENT.split(), lex))
+        #print(parse(['start'] + SENT.split(), lex))
+        print(parse(SENT.split(), lex, n_cats))
     else:
         sent_to_parse = raw_input('Please enter some words to parse\n').split()
         print('Parser, do you recognize this sentence?')
-        print(parse(sent_to_parse, lex))
+        print(parse(sent_to_parse, lex, n_cats))
 
 #------------------------------------------------------------------------------
 if __name__ == '__main__':
