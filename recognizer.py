@@ -149,13 +149,6 @@ def print_iter(iterable):
     else:
         print('EMPTY')
 
-#def make_phrase(pos, features):
-    #pass
-
-#def update(sorted_list, recognized):
-    #for member in sorted_list:
-        #if member[1] == 
-
 def abort_due_to(word):
     return 'The lexicon does not have the word "{0}" in it, please enter \
 something the lexicon will recognize or load a new lexicon'
@@ -163,17 +156,6 @@ something the lexicon will recognize or load a new lexicon'
 def project_predict(feats):
     print(feats)
     return pair(up(feats), down(feats[0]))
-
-#def gen_recognized(daughter, mother, inherit):
-    #'''Returns mother node that inherited its features from the passed daughter
-    #node.'''
-    #if inherit:
-        #return tree(daughter.head[:1], [], simple=False)
-    #pass
-    #active = daughter.head[0]
-    ##checked = daughter.checked + [active]
-    #unchecked = daughter.head[1:]
-    #return tree(unchecked, daughter.features, simple=True)
 
 #============================ Core Functions ==================================
 
@@ -197,8 +179,6 @@ def scan(inpt, to_recognize):
     inpt : node that was either read in or passed by previous iterations of scan()
     to_recognize : stack of unrecognized nodes
     '''
-    #if is_movable(inpt):
-        #return(
     for priority, pair in sorted(to_recognize, reverse=True):
         print('Top priority item on stack:', pair)
         print('Compared to the active item:', inpt)
@@ -237,18 +217,12 @@ def down(feat):
         return unmerge(feat, 'selectee')
     elif is_selected(feat):
         return unmerge(feat, 'selector')
-    #elif is_licensor(feat):
-        #return unmove(feat)
     else:
         raise Exception('there was a problem with this feature: {0}'.format(feat))
 
 def parse(sent, lexicon, null_cats):
     priority_counter = 1
     stack_sizes = [0]
-    #to_recognize = {0:(features(['=v'], ['c']), features([], ['v']))}
-    #stack_sizes = [len(to_recognize)]
-    #to_recognize = []
-# NEEDS WORK
     to_recognize = [(0, project_predict(item)) for item in null_cats]
     non_lex = len(to_recognize)
     for word in sent:
@@ -261,26 +235,19 @@ def parse(sent, lexicon, null_cats):
             abort_due_to(word)
         inpt = tree(lexicon[word], [], 'simple')
         print('Found lexical entry:', inpt)
-        #print scan(inpt, to_recognize)
         print('Scanning stack for matches with this active item')
         (current, to_recognize) = scan(inpt, to_recognize)
-        #print('recognized this phrase:', current)
-        #print(current.unchecked[0] == 'c' )
-        #print(len(current.unchecked) == 1)
         if not is_end_category(current):
             print('This is not the end yet!')
             if is_movable(current):
                 current = unmove(current)
             to_recognize.append((priority_counter, project_predict(current.head)))
             priority_counter += 1
-            #project_derive = up(current)
-            #expand_predict = down(current.head[0])
             #if project_derive and expand_predict:
                 #print ('Projection and prediction rules yield the following...')
                 #print('Semi-recognized mother:', project_derive)
                 #print('Unrecognized sister:', expand_predict)
                 #print('We add these items coupled together to the stack.')
-                #to_recognize[priority_counter] = pair(project_derive, expand_predict)
         stack_sizes.append(max((len(to_recognize)-non_lex),0))
     print('It appears we have reached the end of the sentence.')
     print('Here are the contents of the stack:')
@@ -290,7 +257,6 @@ def parse(sent, lexicon, null_cats):
         # plots cut off at the last token for some reason, so we add a dummy token
         # to the sent list and a dummy value to the stack_sizes list
         sent = [''] + sent + ['']
-        #stack_sizes.append(0)
         plot_stack(sent, stack_sizes)
     return len([x for x, y in to_recognize if x > 0]) == 0
 
