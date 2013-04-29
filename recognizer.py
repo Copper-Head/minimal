@@ -21,6 +21,9 @@ except ImportError:
 tree = namedtuple('tree', ['head', 'features', 'tree_type'])
 pair = namedtuple('pair', ['part_confirmed', 'unconfirmed'])
 #features = namedtuple('features', ['checked', 'unchecked'])
+missingWord = """The lexicon does not have the word "{0}" \
+in it, please enter something the lexicon will recognize or \
+load a new lexicon."""
 
 ###============ I/O Helper Functions ================
 
@@ -29,12 +32,15 @@ def parse_axiom_file(fileName):
     It assumes sane entries for the axioms so these are not checked for validity.
     '''
     def has_comment(line):
+        """Given a line, checks if there is a "#" in it."""
         return ('#' in line)
 
     def is_flag(line):
+        """Given a line, checks if it starts with a "!" point. """
         return ''.join(line).startswith('!')
 
     def determine_state(line):
+        """Given a line determines what state the line designates."""
         if 'LEXICAL' in line:
             return 'lex'
         elif 'GOALS' in line:
@@ -42,7 +48,7 @@ def parse_axiom_file(fileName):
         elif 'NON-LEXICAL' in line:
             return 'non-lex'
         else:
-            raise Exception('Unkown flag', line)
+            raise Exception('Unkown state flag', line)
     
     # after some helper functions let's define our output variable
     d = {
@@ -54,20 +60,25 @@ def parse_axiom_file(fileName):
     state = 'non-lex'
     # now we open the file
     with open(fileName) as file:
+        # loop over all the lines in it
         for line in file:
             if has_comment(line):
+                #if line contains comment symbol, ignore everything after it
                 relevantLine = line[:line.index('#')].split()
             else:
+                #otherwise, consider the whole line
                 relevantLine = line.split()
-            empty_line = len(relevantLine) == 0
+            empty_line = (len(relevantLine) == 0)
             # check if line contains a flag
             if not empty_line and is_flag(relevantLine):
                 state = determine_state(relevantLine)
                 # now check if entry is lexical
-            elif not empty_line and state == 'lex':
+            elif not empty_line and state is 'lex':
                 d[state][relevantLine[0]] = relevantLine[1:]
-            elif not empty_line:
+            elif not empty_line and state is 'non-lex':
                 d[state].append(relevantLine)
+            elif not empty_line and state is 'goals':
+                d[state].extend(relevantLine)
     return d
 
 def plot_stack(sent, stack_sizes):
@@ -136,7 +147,7 @@ def print_iter(iterable):
 
 def abort_due_to(word):
     return 'The lexicon does not have the word "{0}" in it, please enter \
-something the lexicon will recognize or load a new lexicon'
+something the lexicon will recognize or load a new lexicon'.format(word)
 
 def project_predict(item):
     return pair(up(item), unmerge(item))
@@ -210,8 +221,7 @@ def parse(sent, lexicon, null_cats, goals):
         print_iter(to_recognize)
         print('Reading input: "{}"'.format(word))
         if word not in lexicon:
-            print('not found')
-            abort_due_to(word)
+            raise Exception(missingWord.format(word))
         inpt = tree(lexicon[word], [], 'simple')
         print('Found lexical entry:', inpt)
         print('Scanning stack for matches with this active item')
@@ -241,7 +251,8 @@ def main(sent, demo=True):
     axiom_file = parse_axiom_file('test.lex')
     lex = axiom_file['lex']
     n_cats = axiom_file['non-lex']
-    gols = [g[0] for g in axiom_file['goals']]
+    #gols = [g[0] for g in axiom_file['goals']]
+    gols = axiom_file['goals']
     print('We have the following Lexicon:')
     print_iter(lex)
     print('And the following non-lexical categories:')
@@ -261,5 +272,6 @@ if __name__ == '__main__':
     # sentences for the demo 
     #sent = 'mary eats meat' 
     sent = "maria will speak nahuatl"
+    #sent = "maria will speak cats"
     main(sent)
 
