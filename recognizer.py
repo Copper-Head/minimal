@@ -4,10 +4,8 @@
 
 #===================== IMPORTS --- SETUP --- GLOBAL VARS ======================
 from __future__ import print_function # for python 3.x printing 
-#import os
-#import sys
-#import re
 from collections import namedtuple
+
 # try to import numpy and matplotlib, if imports fail, no plots will be drawn
 try:
     import numpy as np # needed to create Axes for plots 
@@ -23,8 +21,6 @@ except ImportError:
 tree = namedtuple('tree', ['head', 'features', 'tree_type'])
 pair = namedtuple('pair', ['part_confirmed', 'unconfirmed'])
 #features = namedtuple('features', ['checked', 'unchecked'])
-
-SENT = 'mary eats meat' # sentence for the demo 
 
 ###============ I/O Helper Functions ================
 
@@ -74,20 +70,8 @@ def parse_axiom_file(fileName):
                 d[state].append(relevantLine)
     return d
 
-def find_lex_axioms(sent, d):
-    '''Function finds lexical axioms present in sent and loaded in our grammar.
-    If one word is not found, raises Exception asking user to reenter the word.
-    '''
-    lexAxioms = []
-    for indx in xrange(len(sent)):
-        if sent[indx] in d:
-            lexAxioms.append(((indx, indx+1), d[sent[indx]]))
-        else:
-            raise Exception(sent[indx])
-    return [Node(x[0], x[1]) for x in lexAxioms]
-
 def plot_stack(sent, stack_sizes):
-    '''plots size of stack change over tokens processed'''
+    '''plots size of stack over tokens processed'''
     # set plot title and y-axis label
     plt.title('Stack Size over Tokens Traversed')
     plt.ylabel('Stack Size')
@@ -97,7 +81,8 @@ def plot_stack(sent, stack_sizes):
     #generate plot
     bars = plt.bar(ind, stack_sizes, width, color='g')
     #set ticks for both axes
-    plt.xticks(ind+width/2, sent)
+    #plt.xticks(ind+width/2, sent)
+    plt.xticks(ind,sent)
     plt.yticks(range(0,max(stack_sizes)+2,1))
     #draw the plot
     plt.show()
@@ -118,15 +103,15 @@ def is_selector(feat):
 
 def is_head(phrase):
     '''checks if phrase is a head'''
-    feature = phrase[0]
+    feature = phrase.head[0]
     return is_selector(feature) or is_licensor(feature)
 
 def is_movable(item):
     return '+' in item.head[0]
 
-def is_end_category(phrase):
+def is_end_category(phrase, goals):
     '''checks if phrase is the distinguished or end category'''
-    return phrase.head[0] == 'c' and len(phrase.head) == 1
+    return (phrase.head[0] in goals) and (len(phrase.head) == 1)
 
 #============================ Helper Functions ================================
 
@@ -153,19 +138,20 @@ def abort_due_to(word):
     return 'The lexicon does not have the word "{0}" in it, please enter \
 something the lexicon will recognize or load a new lexicon'
 
-def project_predict(feats):
-    print(feats)
-    return pair(up(feats), down(feats[0]))
+def project_predict(item):
+    return pair(up(item), unmerge(item))
 
 #============================ Core Functions ==================================
 
-def unmerge(feat, feat_type):
+def unmerge(item):
     '''Depending on whether the feat_type is selector or selectee returns a
     projected (yet unrecognized) node that will be then added to the stack'''
-    if feat_type == 'selectee':
-        return tree([feat.lstrip('=')], [], 'either')
-    elif feat_type == 'selector':
-        return tree(['=' + feat], [], 'complex')
+    feat = item.head[0]
+    if is_selector(feat):
+        sister = tree([feat.lstrip('=')], [], 'either')
+    elif is_selected(feat):
+        sister = tree(['=' + feat], [], 'complex')
+    return sister
 
 def unmove(item):
     '''return an unmoved node'''
@@ -173,6 +159,19 @@ def unmove(item):
     if item.features.count(f) == 1:
         item.features.remove(f)
         return tree(item.head[1:], item.features, 'complex')
+    raise Exception('Move impossible! \nHere is the culprit: {}'.format(item))
+
+def up(item):
+    '''Project a semi-recognized mother node from daughter.
+    if inherit=True or daughter is determined to be a head, the constructed
+        mother will inherit the features of the daughter, otherwise the
+        features will be set to None and inherited from the sister node of the
+        current daughter one.
+        '''
+    xtract_licensees = item.features + [f for f in item.head if "-" in f]
+    if is_head(item):
+        return tree(item.head[1:], xtract_licensees, 'complex')
+    return tree([None], xtract_licensees, 'complex')
 
 def scan(inpt, to_recognize):
     ''' Compares inpt to every member of to_recognize.
@@ -185,11 +184,12 @@ def scan(inpt, to_recognize):
         if match(inpt, pair.unconfirmed):
             print('The item on the stack was recognized.')
             print('It will now serve as the active item...')
-            if is_head(inpt.head):
-                recognized = tree(inpt.head[1:], inpt.features, 'complex')
-                print(recognized)
+            new_licensees = inpt.features + pair.part_confirmed.features
+            if is_head(inpt):
+                recognized = tree(inpt.head[1:], new_licensees, 'complex')
             else:
-                recognized = pair.part_confirmed
+                new_head = pair.part_confirmed.head
+                recognized = tree(new_head, new_licensees, "complex")
             print('... after we remove it from the stack')
             if priority != 0: # keep null items on stack 
                 to_recognize.remove((priority, pair))
@@ -198,32 +198,11 @@ def scan(inpt, to_recognize):
     print('No items on the stack matched this item or the stack was empty.')
     return (inpt, to_recognize)
 
-def up(feats):
-    '''Project a semi-recognized mother node from daughter.
-    if inherit=True or daughter is determined to be a head, the constructed
-        mother will inherit the features of the daughter, otherwise the
-        features will be set to None and inherited from the sister node of the
-        current daughter one.
-        '''
-    if is_head(feats):
-        return tree(feats[1:], [], 'complex')
-    return tree([None], [], 'complex')
-
-def down(feat):
-    '''Determines what operation to use to construct a projected unrecognized
-    node based on the feature feat. '''
-    print(feat)
-    if is_selector(feat):
-        return unmerge(feat, 'selectee')
-    elif is_selected(feat):
-        return unmerge(feat, 'selector')
-    else:
-        raise Exception('there was a problem with this feature: {0}'.format(feat))
-
-def parse(sent, lexicon, null_cats):
+def parse(sent, lexicon, null_cats, goals):
     priority_counter = 1
     stack_sizes = [0]
-    to_recognize = [(0, project_predict(item)) for item in null_cats]
+    to_recognize = [(0, project_predict(item)) for item in 
+           (tree(x, [], "simple") for x in null_cats)]
     non_lex = len(to_recognize)
     for word in sent:
         print('{}\nNew parsing cycle.'.format('#'*50))
@@ -237,17 +216,13 @@ def parse(sent, lexicon, null_cats):
         print('Found lexical entry:', inpt)
         print('Scanning stack for matches with this active item')
         (current, to_recognize) = scan(inpt, to_recognize)
-        if not is_end_category(current):
+        if is_movable(current):
+            print('unmoving...')
+            current = unmove(current)
+        if not is_end_category(current, goals):
             print('This is not the end yet!')
-            if is_movable(current):
-                current = unmove(current)
-            to_recognize.append((priority_counter, project_predict(current.head)))
+            to_recognize.append((priority_counter, project_predict(current)))
             priority_counter += 1
-            #if project_derive and expand_predict:
-                #print ('Projection and prediction rules yield the following...')
-                #print('Semi-recognized mother:', project_derive)
-                #print('Unrecognized sister:', expand_predict)
-                #print('We add these items coupled together to the stack.')
         stack_sizes.append(max((len(to_recognize)-non_lex),0))
     print('It appears we have reached the end of the sentence.')
     print('Here are the contents of the stack:')
@@ -258,22 +233,24 @@ def parse(sent, lexicon, null_cats):
         # to the sent list and a dummy value to the stack_sizes list
         sent = [''] + sent + ['']
         plot_stack(sent, stack_sizes)
-    return len([x for x, y in to_recognize if x > 0]) == 0
+    return sum(1 for x, y in to_recognize if x > 0) == 0
 
 #================================= __MAIN__ ===================================
-def main(demo=True):
+def main(sent, demo=True):
     print('For now this is just a demo.')
     axiom_file = parse_axiom_file('test.lex')
     lex = axiom_file['lex']
     n_cats = axiom_file['non-lex']
+    gols = [g[0] for g in axiom_file['goals']]
     print('We have the following Lexicon:')
     print_iter(lex)
     print('And the following non-lexical categories:')
     print_iter(n_cats)
+    print('And the following goals:')
+    print_iter(gols)
     if demo:
-        print('Is the sentence "mary eats meat" grammatical?')
-        #print(parse(['start'] + SENT.split(), lex))
-        print(parse(SENT.split(), lex, n_cats))
+        print('Is the sentence "{0}" grammatical?'.format(sent))
+        print(parse(sent.split(), lex, n_cats, gols))
     else:
         sent_to_parse = raw_input('Please enter some words to parse\n').split()
         print('Parser, do you recognize this sentence?')
@@ -281,5 +258,8 @@ def main(demo=True):
 
 #------------------------------------------------------------------------------
 if __name__ == '__main__':
-    main()
+    # sentences for the demo 
+    #sent = 'mary eats meat' 
+    sent = "maria will speak nahuatl"
+    main(sent)
 
